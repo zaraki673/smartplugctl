@@ -5,48 +5,61 @@
 # Control an AWOX smartPlug (BLE electrical plug with relay) from command line
 # sample: './smart_plug_ctl.py 98:7B:F3:34:78:52 on' to turn on the plug
 #
-# needs: bluez installed with gatttool utility
+# needs: bluez and python bluepy module
 #
 # license: MIT
 
 from __future__ import print_function
 import sys
-import time
-import subprocess
 import argparse
+from pySmartPlugSmpB16 import SmartPlug, btle
 
 # parse args
 parser = argparse.ArgumentParser()
 parser.add_argument('ble_addr', type=str, 
                     help='plug bluetooth LE address (like 98:7b:f3:34:78:52)')
-parser.add_argument('state', type=str, choices=['on', 'off'],
-                    help='plug state to set')
+parser.add_argument('command', type=str, choices=['on', 'off', 'status'],
+                    help='command to send at plug')
 args = parser.parse_args()
 
-# format gatttool command
-cmd = 'gatttool -b {0}'.format(args.ble_addr)
-plug_on_opt = ' --char-write -a 0x2b -n 0f06030001000005ffff'
-plug_off_opt = ' --char-write -a 0x2b -n 0f06030000000004ffff'
-cmd += plug_on_opt if args.state == 'on' else plug_off_opt
-cmd += ' 2>/dev/null'
+# connect to the plug (BLE connect)
+try:
+    plug = SmartPlug(args.ble_addr)
+except btle.BTLEException as err:
+    sys.exit('error when connect to %s (code %d)' % (args.ble_addr, err.code))
 
-# do it
-do_retry = 3
-while True:
-    return_code = subprocess.call(cmd, shell=True)
-    do_retry -= 1
-    # exit if cmd is ok or too retry
-    if return_code == 0 or do_retry < 1:
-        break
+# set plug on/off
+if args.command == 'on':
+    try:
+        is_ok = plug.on()
+    except btle.BTLEException as err:
+        sys.exit('error when setting plug %s on (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('smartPlug is set on')
     else:
-        print('error, do another try', file=sys.stderr)
-    # wait before next try
-    time.sleep(0.2)
+        sys.exit('unable to set smartPlug on')
+elif args.command == 'off':
+    try:
+        is_ok = plug.off()
+    except btle.BTLEException as err:
+        sys.exit('error when setting plug %s off (code %d)' % (args.ble_addr, err.code))
+    if is_ok:
+        print('smartPlug is set off')
+    else:
+        sys.exit('unable to contact smartPlug')
+elif args.command == 'status':
+    try:
+        (state, power) = plug.status_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting stat to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    status = 'on' if state else 'off'
+    print('plug state = %s' % status)
+    print('plug power = %d W' % power)
 
-# print status
-if return_code == 0:
-    print('smartPlug is set {0}'.format(args.state))
-else:
-    print('unable to contact smartPlug', file=sys.stderr)
-# return error code
-sys.exit(return_code)
+# disconnect BLE
+plug.disconnect()
+
+# exit without error
+sys.exit(0)
+
