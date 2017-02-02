@@ -12,13 +12,14 @@
 from __future__ import print_function
 import sys
 import argparse
+import pprint
 from pySmartPlugSmpB16 import SmartPlug, btle
 
 # parse args
 parser = argparse.ArgumentParser()
 parser.add_argument('ble_addr', type=str, 
                     help='plug bluetooth LE address (like 98:7b:f3:34:78:52)')
-parser.add_argument('command', type=str, choices=['on', 'off', 'status'],
+parser.add_argument('command', type=str, choices=['on', 'off', 'status', 'read_programs', 'history_hour', 'history_day'],
                     help='command to send at plug')
 args = parser.parse_args()
 
@@ -46,17 +47,42 @@ elif args.command == 'off':
     if is_ok:
         print('smartPlug is set off')
     else:
-        sys.exit('unable to contact smartPlug')
+        sys.exit('unable to set smartPlug off')
 elif args.command == 'status':
     try:
-        (state, power) = plug.status_request()
+        (state, power, voltage) = plug.status_request()
     except btle.BTLEException as err:
         sys.exit('error when requesting stat to plug %s (code %d)' % (args.ble_addr, err.code))
     # print result
     status = 'on' if state else 'off'
-    print('plug state = %s' % status)
-    print('plug power = %d W' % power)
-
+    print('plug state   = %s' % status)
+    print('plug power   = %d W' % power)
+    print('plug voltage = %d V' % voltage)
+elif args.command == 'read_programs':
+    try:
+        (programs) = plug.program_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting program to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    print('plug programs : ' )
+    pprint.pprint(programs)
+elif args.command == 'history_hour':
+    try:
+        history = plug.power_history_hour_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting power history to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    for i, h in enumerate(history):
+        print('plug power h-%02u = %d Wh' % (i+1, h))
+elif args.command == 'history_day':
+    try:
+        history = plug.power_history_day_request()
+    except btle.BTLEException as err:
+        sys.exit('error when requesting power history to plug %s (code %d)' % (args.ble_addr, err.code))
+    # print result
+    for i, h in enumerate(history):
+        print('plug power j-%02u = %d Wh' % (i+1, h))
+    
 # disconnect BLE
 plug.disconnect()
 
